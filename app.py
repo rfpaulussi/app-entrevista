@@ -2,80 +2,76 @@ import streamlit as st
 import google.generativeai as genai
 import requests
 
-# Configuração da página
-st.set_page_config(page_title="Assistente de Entrevista", page_icon="📋", layout="centered")
+st.set_page_config(page_title="Recrutamento Operacional", page_icon="📋", layout="centered")
+st.title("📋 Entrevista e Avaliação")
 
-st.title("📋 Recrutamento Técnico")
-st.markdown("Gerador de roteiro técnico com integração automática à folha de controle operacional.")
-
-# Resgate seguro das Chaves (invisíveis no código)
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
     google_sheets_url = st.secrets["GOOGLE_SHEETS_URL"]
     genai.configure(api_key=api_key)
 except KeyError:
-    st.error("Erro de configuração: Chaves não encontradas nos Secrets.")
+    st.error("Erro: Chaves não configuradas nos Secrets.")
     st.stop()
 
-# Interface de Configuração da Vaga
-st.subheader("Configurar Vaga")
-candidate_name = st.text_input("Candidato (Opcional)", placeholder="Ex: João da Silva")
+# Campos recuperados para igualar a sua planilha
+st.subheader("Dados do Candidato")
+candidate_name = st.text_input("Nome do Candidato *", placeholder="Ex: João da Silva")
 
-roles = ["Auxiliar de Limpeza", "Limpador de Vidros", "Encarregado de Limpeza", "Encarregado Volante", "Jardineiro / Podador"]
-role = st.selectbox("Cargo Pretendido *", roles)
+col1, col2 = st.columns(2)
+with col1:
+    role = st.selectbox("Vaga Pretendida *", ["Auxiliar de Limpeza", "Limpador de Vidros", "Encarregado de Limpeza", "Encarregado Volante", "Jardineiro / Podador"])
+    experience = st.selectbox("Experiência *", ["Sem experiência", "Até 1 ano", "1 a 3 anos", "Mais de 3 anos"])
+with col2:
+    education = st.selectbox("Escolaridade *", ["Fundamental Incompleto", "Fundamental Completo", "Médio Incompleto", "Médio Completo"])
+    status = st.selectbox("Situação *", ["Em Análise", "Aprovado", "Reprovado", "Banco de Talentos"])
 
-envs = ["Escola / Creche", "Prédio Administrativo", "Parque / Praça Pública", "UBS / Posto de Saúde"]
-environment = st.selectbox("Ambiente / Unidade *", envs)
+environment = st.selectbox("Ambiente / Unidade (Para guiar a IA)", ["Escola / Creche", "Prédio Administrativo", "Parque / Praça Pública", "UBS / Posto de Saúde"])
 
-# Controle de estado para manter o texto gerado visível
-if "roteiro_gerado" not in st.session_state:
-    st.session_state.roteiro_gerado = None
+if "roteiro" not in st.session_state:
+    st.session_state.roteiro = None
 
-# Botão de Geração
-if st.button("✨ Gerar Perguntas", type="primary", use_container_width=True):
-    with st.spinner("Criando parâmetros técnicos da entrevista..."):
+if st.button("✨ Gerar Perguntas Técnicas", type="primary", use_container_width=True):
+    if not candidate_name:
+        st.warning("Preencha o nome do candidato antes de gerar.")
+        st.stop()
         
-        # Instruções alinhadas à coordenação operacional de contratos públicos
-        sys_instruction = f"""Você é Engenheiro de Segurança do Trabalho e Coordenador Operacional com 18 anos de experiência em gestão de serviços.
-        Gere um roteiro de entrevista técnico com EXATAMENTE 4 perguntas diretas.
-        1. Tempo nos empregos anteriores (avaliação de estabilidade).
-        2. Conhecimento técnico sobre diluição de químicos concentrados.
-        3. Como reage ao receber ordens da chefia (subordinação e disciplina).
-        4. Questão de atitude rigorosamente adaptada ao ambiente ({environment}).
-        Use formatação limpa (sem tags HTML, apenas Markdown). Seja prático e exigente na postura operacional."""
-        
-        prompt = f"Candidato: {candidate_name if candidate_name else 'Candidato'}. Cargo: '{role}'. Ambiente: '{environment}'. Gere as 4 perguntas."
+    with st.spinner("Analisando perfil..."):
+        sys_instruction = f"""Você é Coordenador Operacional com 18 anos de experiência em serviços.
+        Gere 4 perguntas de entrevista para {candidate_name} ({role}).
+        Adapte a exigência para alguém com experiência: '{experience}' e escolaridade: '{education}'.
+        Foque em: 1. Estabilidade, 2. Conhecimento técnico, 3. Disciplina/Subordinação, 4. Postura no ambiente ({environment})."""
         
         try:
             model = genai.GenerativeModel('gemini-2.5-flash', system_instruction=sys_instruction)
-            response = model.generate_content(prompt)
-            st.session_state.roteiro_gerado = response.text
+            response = model.generate_content("Gere o roteiro.")
+            st.session_state.roteiro = response.text
         except Exception as e:
-            st.error(f"Erro na comunicação com a IA: {e}")
+            st.error(f"Erro na IA: {e}")
 
-# Exibição do Resultado e Gravação
-if st.session_state.roteiro_gerado:
-    st.markdown("### 💬 Roteiro de Entrevista")
-    st.info(st.session_state.roteiro_gerado)
+if st.session_state.roteiro:
+    st.info(st.session_state.roteiro)
     
-    st.markdown("---")
-    if st.button("💾 Gravar na Folha de Controle", use_container_width=True):
-        with st.spinner("A enviar dados para a planilha..."):
+    # Novo campo para o Coordenador colocar o parecer final
+    parecer = st.text_area("Seu Parecer Técnico / Observações da Entrevista", placeholder="Como o candidato se comportou?")
+    
+    if st.button("💾 Gravar na Planilha Oficial", use_container_width=True):
+        with st.spinner("Salvando dados..."):
             
-            # Preparação do pacote de dados para o Google Sheets
+            # Monta o texto final juntando as perguntas da IA e o seu parecer
+            texto_final = f"**ROTEIRO UTILIZADO:**\n{st.session_state.roteiro}\n\n**PARECER DO COORDENADOR:**\n{parecer}"
+            
             payload = {
-                "candidateName": candidate_name if candidate_name.strip() else "Candidato Sem Nome",
+                "candidateName": candidate_name,
                 "role": role,
-                "environment": environment,
-                "contentHTML": st.session_state.roteiro_gerado
+                "experience": experience,
+                "education": education,
+                "status": status,
+                "observations": texto_final
             }
             
             try:
-                # Envio seguro pelo servidor
-                response = requests.post(google_sheets_url, json=payload)
-                st.success("✅ Entrevista gravada na folha de cálculo com sucesso!")
-                
-                # Limpa o roteiro após salvar para a próxima entrevista
-                st.session_state.roteiro_gerado = None
+                requests.post(google_sheets_url, json=payload)
+                st.success("✅ Avaliação registrada com sucesso!")
+                st.session_state.roteiro = None # Limpa a tela para o próximo candidato
             except Exception as e:
-                st.error("Falha ao comunicar com a planilha. Verifique a conexão.")
+                st.error("Erro de conexão com o Google Sheets.")
