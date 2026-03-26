@@ -101,5 +101,6 @@ if st.session_state.roteiro:
                 requests.post(google_sheets_url, json=payload)
                 st.success("✅ Avaliação registada com sucesso!")
                 st.session_state.roteiro = None 
+                st.rerun() # Atualiza o ecrã instantaneamente após a gravação
             except Exception as e:
                 st.error("Falha ao comunicar com o Google Sheets.")
